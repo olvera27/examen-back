@@ -3,6 +3,7 @@ package com.examen.login.controller;
 import java.io.UnsupportedEncodingException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -42,13 +43,18 @@ public class AuthController {
 	public ResponseEntity<?> login(@Valid @RequestBody LoginUsuarioDTO loginUsuarioDTO)
 			throws NoSuchAlgorithmException, UnsupportedEncodingException {
 		Usuario usuario = usuarioService.getByNombre(loginUsuarioDTO.getUsuario());
+		Date fHoy = new Date();
 		if (usuario != null) {
-			if (loginUsuarioDTO.getPassword().equals(decode(usuario.getPassword()))) {				
-				JwtDTO jwtDTO = new JwtDTO(getJWTToken(loginUsuarioDTO.getUsuario()), loginUsuarioDTO.getUsuario());
-				return new ResponseEntity(jwtDTO, HttpStatus.OK);
+			if (loginUsuarioDTO.getPassword().equals(decode(usuario.getPassword()))) {
+				if (usuario.getFechaModificacion().before(fHoy)) {					
+					return new ResponseEntity(new ResponseDTO(-1, "Su contraseña ha caducado"), HttpStatus.UNAUTHORIZED);
+				} else {
+					JwtDTO jwtDTO = new JwtDTO(getJWTToken(loginUsuarioDTO.getUsuario()), loginUsuarioDTO.getUsuario());
+					return new ResponseEntity(jwtDTO, HttpStatus.OK);
+				}
 			} else {
 				return new ResponseEntity(new ResponseDTO(0, "Contraseña incorreta"), HttpStatus.UNAUTHORIZED);
-			}
+			}			
 		} else {
 			return new ResponseEntity(new ResponseDTO(0, "El usuario no existe"), HttpStatus.UNAUTHORIZED);
 		}
@@ -61,6 +67,21 @@ public class AuthController {
 		usuario = new Usuario(encode(nuevoUsuario.getPassword()), nuevoUsuario.getNombre(), nuevoUsuario.getEmail(), 1, new Date(), "A", new Date());
 		usuarioService.save(usuario);
 		return new ResponseEntity(new ResponseDTO(1, "Usuario generado correctamente."), HttpStatus.CREATED);
+	}
+	
+	@PostMapping("/actualizaPassword")
+	public ResponseEntity<?> actualiza(@Valid @RequestBody LoginUsuarioDTO actualizaUsuario) throws NoSuchAlgorithmException, UnsupportedEncodingException {
+		Usuario usuario = usuarioService.getByNombre(actualizaUsuario.getUsuario());
+		if (usuario != null) {
+			usuario.setPassword(encode(actualizaUsuario.getPassword()));
+			Calendar c = Calendar.getInstance();
+			c.setTime(new Date());
+			c.add(Calendar.DAY_OF_YEAR, 30);			
+			usuario.setFechaModificacion(c.getTime());
+			usuarioService.updateUsuario(usuario);	
+		}
+		JwtDTO jwtDTO = new JwtDTO(getJWTToken(actualizaUsuario.getUsuario()), actualizaUsuario.getUsuario());
+		return new ResponseEntity(jwtDTO, HttpStatus.OK);					
 	}
 
 	public String encode(String input) throws NoSuchAlgorithmException, UnsupportedEncodingException {
